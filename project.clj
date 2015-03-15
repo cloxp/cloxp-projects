@@ -4,7 +4,9 @@
   :url "http://github.com/cloxp/cloxp-projects"
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/data.xml "0.0.8"]
-                 [com.cemerick/pomegranate "0.3.0"]]
+                 [org.clojure/data.json "0.2.6"]
+                 [com.cemerick/pomegranate "0.3.0"]
+                 [org.rksm/system-files "0.1.3-SNAPSHOT"]]
   :scm {:url "git@github.com:cloxp/cloxp-projects.git"}
   :pom-addition [:developers [:developer
                               [:name "Robert Krahn"]

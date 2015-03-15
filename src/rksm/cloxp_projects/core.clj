@@ -1,10 +1,12 @@
 (ns rksm.cloxp-projects.core
   (:require [clojure.data.xml :as xml]
+            [clojure.data.json :as json]
             [clojure.zip :as z]
             [clojure.string :as s]
             [cemerick.pomegranate :refer (add-dependencies)]
             [clojure.java.io :as io]
-            [clojure.pprint :as pp]))
+            [clojure.pprint :as pp]
+            [rksm.system-files :refer [jar-entries-matching jar+entry->reader]]))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; pom
@@ -25,11 +27,93 @@
     (mapcat (juxt :tag (comp first :content)))
     (apply hash-map)))
 
-(defn pom-deps
-  [pom-file]
-  (let [xml (xml/parse-str (slurp pom-file))
-        deps (-> (xml-tags-matching xml :dependencies) first :content)]
+(defn pom-project-info-from-xml
+  [xml]
+  (->> (:content xml)
+    (filter #(some #{(:tag %)} [:groupId :artifactId :version :name :description]))
+    (mapcat (juxt :tag (comp first :content)))
+    (apply hash-map)
+    (#(clojure.set/rename-keys % {:groupId :group-id :artifactId :artifact-id}))))
+
+(def pom-project-info-from-jar-file
+  (memoize
+   (fn
+     [^java.io.File jar-file]
+     (let [jar (java.util.jar.JarFile. jar-file)]
+       (if-let [xml (some-> jar
+                      (jar-entries-matching #"/pom.xml$")
+                      first
+                      (->> (jar+entry->reader jar))
+                      slurp clojure.data.xml/parse-str)]
+         (assoc (pom-project-info-from-xml xml) :jar jar-file))))))
+
+(defn merge-project-infos
+  [infos]
+  (let [merged (apply merge (map #(dissoc % :version :jar) infos))
+        versions (apply sorted-map
+                   (mapcat (fn [{:keys [version jar]}]
+                             [version {:jar jar
+                                       :namespaces (rksm.system-files/namespaces-in-jar jar #"clj(x|s)?")}])
+                           infos))]
+    (assoc merged :versions versions)))
+
+(defn project-infos-from-jar-files
+  [jar-files]
+  (->> jar-files
+    (keep pom-project-info-from-jar-file)
+    (group-by (juxt :artifact-id :group-id))
+    vals (map merge-project-infos)))
+
+(defn search-for-ns
+  [project-infos ns-match & [{:keys [newest] :as opts}]]
+  (keep
+   (fn [{:keys [versions] :as info}]
+     (let [found-versions (keep
+                           (fn [[version {nss :namespaces}]]
+                             (if (some #(re-find ns-match (str %)) nss) version))
+                           versions)
+           found-versions (if newest (take-last 1 found-versions) found-versions)]
+       (if (empty? found-versions)
+         nil (assoc info :versions (select-keys versions found-versions)))))
+   project-infos))
+
+(defn search-for-namespaces-in-local-repo
+  "Takes a regexp and finds project infos {:description :artifact-id :group-id
+  :versions {version-string {:jar :namespaces}} whose namespaces match."
+  [ns-match & [opts]]
+  (let [repo-dir (clojure.java.io/file
+                  (-> (System/getenv) (get "HOME")) ".m2/repository")
+        infos (->> (rksm.system-files.fs-util/walk-dirs repo-dir #"\.jar$")
+                project-infos-from-jar-files)]
+    (search-for-ns infos ns-match opts)))
+
+(defn search-for-namespaces-in-local-repo->json
+  [ns-match & [options]]
+  (json/write-str
+   (search-for-namespaces-in-local-repo ns-match options)
+   :value-fn (fn [k v]
+               (if (= :jar k) (str v) v))))
+
+(comment
+ (search-for-namespaces-in-local-repo #"json"))
+
+
+(defn pom-deps-from-xml
+  [xml]
+  (let [deps (-> (xml-tags-matching xml :dependencies) first :content)]
     (map (comp make-dep-vec xml-dep->info) deps)))
+
+(defn pom-project-info
+  "returns a map of :description :artifact-id :group-id version"
+  [pom-file]
+  (-> pom-file slurp xml/parse-str
+    pom-project-info-from-xml))
+
+(defn pom-deps
+  "dependencies declared in the pom.xml file"
+  [pom-file]
+  (-> pom-file slurp xml/parse-str
+    pom-deps-from-xml))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; source dirs
