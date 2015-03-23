@@ -6,26 +6,27 @@
             [cemerick.pomegranate :refer (add-dependencies)]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
-            [rksm.system-files :refer [jar-entries-matching jar+entry->reader]]))
+            [rksm.system-files :refer [jar-entries-matching jar+entry->reader]]
+            [leiningen.core.project]))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; pom
 
-(defn xml-tags-matching
+(defn- xml-tags-matching
   [xml tag-sym]
   (->> (xml-seq xml)
     (filter (fn [{tag :tag}] (= tag-sym tag)))))
 
-(defn make-dep-vec
-  [{:keys [groupId artifactId version] :as dep-from-pom}]
-  [(symbol groupId artifactId) version])
-
-(defn xml-dep->info
+(defn- xml-dep->info
   [xml-dep]
   (->> xml-dep
     :content
     (mapcat (juxt :tag (comp first :content)))
     (apply hash-map)))
+
+(defn- make-dep-vec
+  [{:keys [groupId artifactId version] :as dep-from-pom}]
+  [(symbol groupId artifactId) version])
 
 (defn pom-project-info-from-xml
   [xml]
@@ -47,7 +48,7 @@
                       slurp clojure.data.xml/parse-str)]
          (assoc (pom-project-info-from-xml xml) :jar jar-file))))))
 
-(defn merge-project-infos
+(defn- merge-project-infos
   [infos]
   (let [merged (apply merge (map #(dissoc % :version :jar) infos))
         versions (apply sorted-map
@@ -98,10 +99,15 @@
  (search-for-namespaces-in-local-repo #"json"))
 
 
-(defn pom-deps-from-xml
+(defn- pom-deps-from-xml
   [xml]
   (let [deps (-> (xml-tags-matching xml :dependencies) first :content)]
     (map (comp make-dep-vec xml-dep->info) deps)))
+
+(defn- pom-deps
+  "dependencies declared in the pom.xml file"
+  [pom-file]
+  (-> pom-file slurp xml/parse-str pom-deps-from-xml))
 
 (defn pom-project-info
   "returns a map of :description :artifact-id :group-id version"
@@ -109,16 +115,10 @@
   (-> pom-file slurp xml/parse-str
     pom-project-info-from-xml))
 
-(defn pom-deps
-  "dependencies declared in the pom.xml file"
-  [pom-file]
-  (-> pom-file slurp xml/parse-str
-    pom-deps-from-xml))
-
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; source dirs
 
-(defn source-dirs-of-pom
+(defn- source-dirs-of-pom
   "Returns contents of sourceDirectory, testSourceDirectory, and sources. Note:
   These are most likely relative paths."
   [pom]
@@ -130,7 +130,7 @@
     (mapcat :content x)
     (distinct x)))
 
-(defn source-dirs-of-lein
+(defn- source-dirs-of-lein
   [project-clj-file]
   (let [proj (read-string (slurp project-clj-file))
         source (some->> proj
@@ -219,7 +219,7 @@
       (.exists pom) (.getCanonicalPath pom)
       :default nil)))
 
-(defn project-clj-with-dep
+(defn- project-clj-with-dep
   [project-clj-map group-id artifact-id version]
   (let [dep [(if group-id (symbol (str group-id) (str artifact-id)) (symbol (str artifact-id))) version]
         deps-at (inc (.indexOf project-clj-map :dependencies))]
@@ -231,7 +231,7 @@
             updated (concat (take deps-at project-clj-map) [updated-deps]  (drop (inc deps-at) project-clj-map))]
         updated))))
 
-(defn add-dep-to-project-clj!
+(defn- add-dep-to-project-clj!
   [project-clj group-id artifact-id version]
   (assert (-> (str project-clj) (.endsWith "project.clj")))
   (let [project-clj (io/file project-clj)]
@@ -241,7 +241,7 @@
         (#(with-out-str (pp/pprint %)))
         (spit project-clj)))))
 
-(defn pom-with-dep
+(defn- pom-with-dep
   [pom-string group-id artifact-id version]
   (let [xml (xml/parse-str pom-string)
         deps (->> (iterate z/next (z/xml-zip xml))
@@ -270,7 +270,7 @@
              xml-string
              (.substring pom-string end))))))
 
-(defn add-dep-to-pom!
+(defn- add-dep-to-pom!
   [pom-file group-id artifact-id version]
   (assert (-> (str pom-file ) (.endsWith "pom.xml")))
   (let [pom-file  (io/file pom-file)]
@@ -286,3 +286,55 @@
       (.endsWith conf-file "pom.xml") (add-dep-to-pom! conf-file group-id artifact-id version)
       (.endsWith conf-file "project.clj") (add-dep-to-project-clj! conf-file group-id artifact-id version)
       :default (throw (Exception. (str "invalid conf file: " conf-file))))))
+
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+(defmulti ^{:private true} lein-project-conf-content
+  (fn [x] (cond
+            (string? x) :string
+            (rksm.system-files/jar? x) :jar
+            :default :dir)))
+
+(defmethod lein-project-conf-content :string
+  [project-clj-string]
+  ; rk 2015-03-22: this is copied from leiningen.core.project/read-raw as the
+  ; leiningen methods do not provide a non-file interface to reading project maps
+  ; and jars aren't supported either
+  (locking leiningen.core.project/read-raw
+    (binding [*ns* (find-ns 'leiningen.core.project)]
+      (try (eval (read-string project-clj-string))
+        (catch Exception e
+          (throw (Exception. "Error loading" e)))))
+    (let [project (resolve 'leiningen.core.project/project)]
+      (when-not project
+        (throw (Exception. "No project map!")))
+      ;; return it to original state
+      (ns-unmap 'leiningen.core.project 'project)
+      @project)))
+
+(defmethod lein-project-conf-content :jar
+  [^java.io.File jar-file]
+  (if-let [rdr (rksm.system-files/jar-url->reader
+                 (str "jar:" (.toURI jar-file) "!/project.clj"))]
+    (lein-project-conf-content (slurp rdr))))
+
+(defmethod lein-project-conf-content :dir
+  [dir]
+  (if-not dir
+    nil
+    (let [project-clj (clojure.java.io/file (str dir "/project.clj"))]
+      (if (.exists project-clj)
+        (lein-project-conf-content (slurp project-clj))
+        (lein-project-conf-content (.getParentFile dir))))))
+
+(defn lein-project-conf-for-ns
+  [ns]
+  (lein-project-conf-content
+   (rksm.system-files/classpath-for-ns ns)))
+
+
+(comment
+ (lein-project-conf-for-ns *ns*)
+ (lein-project-conf-for-ns 'rksm.cloxp-repl)
+ (lein-project-conf-for-ns 'rksm.system-files)
+ )
