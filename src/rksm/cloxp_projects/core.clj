@@ -6,7 +6,13 @@
             [cemerick.pomegranate :refer (add-dependencies)]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
-            [rksm.system-files :refer [jar-entries-matching jar+entry->reader]]
+            [rksm.system-files :as sf]
+            [rksm.system-files.fs-util :as fs-util]
+            [rksm.system-files.jar-util :refer [namespaces-in-jar
+                                                jar-entries-matching
+                                                jar+entry->reader
+                                                jar-url->reader
+                                                jar?]]
             [leiningen.core.project]))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -54,7 +60,7 @@
         versions (apply sorted-map
                    (mapcat (fn [{:keys [version jar]}]
                              [version {:jar jar
-                                       :namespaces (rksm.system-files/namespaces-in-jar jar #"clj(x|s)?")}])
+                                       :namespaces (namespaces-in-jar jar #"clj(x|s)?")}])
                            infos))]
     (assoc merged :versions versions)))
 
@@ -84,7 +90,7 @@
   [ns-match & [opts]]
   (let [repo-dir (clojure.java.io/file
                   (-> (System/getenv) (get "HOME")) ".m2/repository")
-        infos (->> (rksm.system-files.fs-util/walk-dirs repo-dir #"\.jar$")
+        infos (->> (fs-util/walk-dirs repo-dir #"\.jar$")
                 project-infos-from-jar-files)]
     (search-for-ns infos ns-match opts)))
 
@@ -292,7 +298,7 @@
 (defmulti ^{:private true} lein-project-conf-content
   (fn [x] (cond
             (string? x) :string
-            (rksm.system-files/jar? x) :jar
+            (jar? x) :jar
             :default :dir)))
 
 (defmethod lein-project-conf-content :string
@@ -314,7 +320,7 @@
 
 (defmethod lein-project-conf-content :jar
   [^java.io.File jar-file]
-  (if-let [rdr (rksm.system-files/jar-url->reader
+  (if-let [rdr (jar-url->reader
                  (str "jar:" (.toURI jar-file) "!/project.clj"))]
     (lein-project-conf-content (slurp rdr))))
 
@@ -330,7 +336,7 @@
 (defn lein-project-conf-for-ns
   [ns]
   (lein-project-conf-content
-   (rksm.system-files/classpath-for-ns ns)))
+   (sf/classpath-for-ns ns)))
 
 
 (comment
