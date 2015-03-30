@@ -1,6 +1,7 @@
 (defproject org.rksm/cloxp-projects "0.1.0-SNAPSHOT"
   :description "Dealing with clojure projects and project configurations."
-  :license "MIT"
+  :license {:name "MIT License"
+            :url "http://opensource.org/licenses/MIT"}
   :url "http://github.com/cloxp/cloxp-projects"
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [org.clojure/data.xml "0.0.8"]
