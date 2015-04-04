@@ -1,7 +1,7 @@
 (ns rksm.cloxp-projects.versions
   (:refer-clojure :exclude [replace])
   (:require [clojure.string :refer [replace replace-first]]
-            [rksm.cloxp-projects.core :refer [lein-project-conf-content]]))
+            [rksm.cloxp-projects.lein :as lein]))
 
 
 (defn next-patch-version
@@ -41,7 +41,7 @@
 
 (defn update-project-version
   [version-update-fn project-map-string]
-  (let [{:keys [version]} (lein-project-conf-content project-map-string)
+  (let [{:keys [version]} (lein/lein-project-conf-content project-map-string)
         next-version (version-update-fn version)]
     (replace-first project-map-string version next-version)))
 
@@ -65,21 +65,14 @@
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
-(defn update-project-clj!
-  [update-fn file]
-  (let [content (slurp file)]
-    (binding [*file* file]
-      (spit file (update-fn content)))))
-
 (defn update-project-version-in-file!
   [version-update-fn file]
-  (update-project-clj! version-update-fn file))
+  (lein/modify-project-clj! file version-update-fn))
 
 (defmacro update-project-dep-in-file!
   [new-dep-vec file]
-  `(update-project-clj!
-    (fn [c#] (update-project-dep ~new-dep-vec c#))
-    ~file))
+  `(lein/modify-project-clj!
+    ~file (fn [c#] (update-project-dep ~new-dep-vec c#))))
 
 (comment
  (macroexpand-1 '(update-project-dep-in-file! [foo/bar "123"] "xxx"))
