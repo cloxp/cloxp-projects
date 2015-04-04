@@ -1,6 +1,7 @@
 (ns rksm.cloxp-projects.test
   (:require [rksm.cloxp-projects.core :refer :all :exclude (pom)]
             [rksm.cloxp-projects.pom :as pom]
+            [rksm.cloxp-projects.lein :as lein]
             [clojure.test :refer :all]))
 
 (def pom
@@ -74,24 +75,24 @@ ns-unmap
   
   (testing "without :dependencies"
     (is (= '(defproject foo/bar :version "1.2.3" :dependencies [[group/artifact "1.2.3"]])
-           ((deref #'rksm.cloxp-projects.core/project-clj-with-dep)
+           (lein/project-clj-with-dep
             '(defproject foo/bar :version "1.2.3")
             'group 'artifact "1.2.3"))))
   
   (testing "with :dependencies"
     (is (= '(defproject foo/bar :dependencies [[foo/bar "0.1.2"] [group/artifact "1.2.3"]] :version "1.2.3")
-           ((deref #'rksm.cloxp-projects.core/project-clj-with-dep)
+           (lein/project-clj-with-dep
             '(defproject foo/bar :dependencies [[foo/bar "0.1.2"]] :version "1.2.3" )
             'group 'artifact "1.2.3")))))
 
 (deftest update-deps-in-pom  
-  (is (= pom-with-added-dep ((deref #'pom/pom-with-dep) pom 'group 'artifact "1.2.3"))))
+  (is (= pom-with-added-dep (pom/pom-with-dep pom 'group 'artifact "1.2.3"))))
 
 
 (deftest read-leiningen-conf
   (is (= ["cloxp-projects" "org.rksm" ["src"]]
          ((juxt :name :group :source-paths)
-          (lein-project-conf-for-ns 'rksm.cloxp-projects.test)))))
+          (lein/lein-project-conf-for-ns 'rksm.cloxp-projects.test)))))
 
 (comment
  (run-tests *ns*)
