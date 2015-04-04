@@ -73,7 +73,7 @@
     (mapcat :content x)
     (distinct x)))
 
-(defn- pom-with-dep
+(defn pom-with-dep
   [pom-string group-id artifact-id version]
   (let [xml (xml/parse-str pom-string)
         deps (->> (iterate z/next (z/xml-zip xml))
