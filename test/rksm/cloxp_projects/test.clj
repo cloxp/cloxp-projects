@@ -1,5 +1,6 @@
 (ns rksm.cloxp-projects.test
   (:require [rksm.cloxp-projects.core :refer :all :exclude (pom)]
+            [rksm.cloxp-projects.pom :as pom]
             [clojure.test :refer :all]))
 
 (def pom
@@ -84,7 +85,7 @@ ns-unmap
             'group 'artifact "1.2.3")))))
 
 (deftest update-deps-in-pom  
-  (is (= pom-with-added-dep ((deref #'rksm.cloxp-projects.core/pom-with-dep) pom 'group 'artifact "1.2.3"))))
+  (is (= pom-with-added-dep ((deref #'pom/pom-with-dep) pom 'group 'artifact "1.2.3"))))
 
 
 (deftest read-leiningen-conf
