@@ -1,58 +1,27 @@
 (ns rksm.cloxp-projects.core
-  (:require [clojure.data.xml :as xml]
-            [clojure.data.json :as json]
-            [clojure.zip :as z]
+  (:require [clojure.data.json :as json]
             [clojure.string :as s]
             [cemerick.pomegranate :refer (add-dependencies)]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
+            [rksm.cloxp-projects.pom :as pom]
             [rksm.system-files :as sf]
             [rksm.system-files.fs-util :as fs-util]
             [rksm.system-files.jar-util :refer [namespaces-in-jar
-                                                jar-entries-matching
-                                                jar+entry->reader
                                                 jar-url->reader
                                                 jar?]]
-            [leiningen.core.project]))
+            [leiningen.core.project :as project]
+            [leiningen.core.classpath :as classpath]))
+
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-; pom
-
-(defn- xml-tags-matching
-  [xml tag-sym]
-  (->> (xml-seq xml)
-    (filter (fn [{tag :tag}] (= tag-sym tag)))))
-
-(defn- xml-dep->info
-  [xml-dep]
-  (->> xml-dep
-    :content
-    (mapcat (juxt :tag (comp first :content)))
-    (apply hash-map)))
-
-(defn- make-dep-vec
-  [{:keys [groupId artifactId version] :as dep-from-pom}]
-  [(symbol groupId artifactId) version])
-
-(defn pom-project-info-from-xml
-  [xml]
-  (->> (:content xml)
-    (filter #(some #{(:tag %)} [:groupId :artifactId :version :name :description]))
-    (mapcat (juxt :tag (comp first :content)))
-    (apply hash-map)
-    (#(clojure.set/rename-keys % {:groupId :group-id :artifactId :artifact-id}))))
-
-(def pom-project-info-from-jar-file
-  (memoize
-   (fn
-     [^java.io.File jar-file]
-     (let [jar (java.util.jar.JarFile. jar-file)]
-       (if-let [xml (some-> jar
-                      (jar-entries-matching #"/pom.xml$")
-                      first
-                      (->> (jar+entry->reader jar))
-                      slurp clojure.data.xml/parse-str)]
-         (assoc (pom-project-info-from-xml xml) :jar jar-file))))))
+; DEPRECATED pom
+(def ^:private pom-deps pom/pom-deps)
+(def pom-project-info-from-xml pom/pom-project-info-from-xml)
+(def pom-project-info-from-jar-file pom/pom-project-info-from-jar-file)
+(def pom-project-info pom/pom-project-info)
+(def ^:private source-dirs-of-pom pom/source-dirs-of-pom)
+(def ^:private add-dep-to-pom! pom/add-dep-to-pom!)
 
 (defn- merge-project-infos
   [infos]
@@ -104,37 +73,8 @@
 (comment
  (search-for-namespaces-in-local-repo #"json"))
 
-
-(defn- pom-deps-from-xml
-  [xml]
-  (let [deps (-> (xml-tags-matching xml :dependencies) first :content)]
-    (map (comp make-dep-vec xml-dep->info) deps)))
-
-(defn- pom-deps
-  "dependencies declared in the pom.xml file"
-  [pom-file]
-  (-> pom-file slurp xml/parse-str pom-deps-from-xml))
-
-(defn pom-project-info
-  "returns a map of :description :artifact-id :group-id version"
-  [pom-file]
-  (-> pom-file slurp xml/parse-str
-    pom-project-info-from-xml))
-
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; source dirs
-
-(defn- source-dirs-of-pom
-  "Returns contents of sourceDirectory, testSourceDirectory, and sources. Note:
-  These are most likely relative paths."
-  [pom]
-  (as-> pom x
-    (slurp x)
-    (xml/parse-str x)
-    (partial xml-tags-matching x)
-    (mapcat x [:sourceDirectory :testSourceDirectory :source])
-    (mapcat :content x)
-    (distinct x)))
 
 (defn- source-dirs-of-lein
   [project-clj-file]
@@ -246,44 +186,6 @@
       (->> (project-clj-with-dep conf group-id artifact-id version)
         (#(with-out-str (pp/pprint %)))
         (spit project-clj)))))
-
-(defn- pom-with-dep
-  [pom-string group-id artifact-id version]
-  (let [xml (xml/parse-str pom-string)
-        deps (->> (iterate z/next (z/xml-zip xml))
-               (take-while (complement z/end?))
-               (filter #(= :dependencies (some-> % z/node :tag)))
-               first)]
-    (if-not deps
-      pom-string
-      (let [el (xml/sexp-as-element
-                [:dependency
-                 [:groupId (str group-id)]
-                 [:artifactId (str artifact-id)]
-                 [:version version]])
-            updated-deps (z/edit deps #(update-in % [:content] cons [el]))
-            ; actually it should be enough to do
-            ; xml-string (-> updated-deps z/root xml/indent-str)
-            ; but due to http://dev.clojure.org/jira/browse/DXML-15 this
-            ; doesn't work :(
-            xml-string (-> updated-deps z/node xml/indent-str)
-            xml-string (s/replace xml-string #"^.*>\\?\s*|[\n\s]$" "")
-            xml-string (s/replace xml-string #"(?m)^" "  ")
-            start (+ (.indexOf pom-string "<dependencies>") (count "<dependencies>"))
-            end (+ (.indexOf pom-string "</dependencies>") (count "</dependencies>"))]
-        (str (.substring pom-string 0 start)
-             "\n  "
-             xml-string
-             (.substring pom-string end))))))
-
-(defn- add-dep-to-pom!
-  [pom-file group-id artifact-id version]
-  (assert (-> (str pom-file ) (.endsWith "pom.xml")))
-  (let [pom-file  (io/file pom-file)]
-    (assert (.exists pom-file))
-    (let [conf (-> pom-file  slurp)]
-      (-> pom-file
-        (spit (pom-with-dep conf group-id artifact-id version))))))
 
 (defn add-dep-to-project-conf!
   [project-dir group-id artifact-id version]
