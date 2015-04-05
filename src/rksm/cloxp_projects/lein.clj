@@ -1,6 +1,7 @@
 (ns rksm.cloxp-projects.lein)
 (ns rksm.cloxp-projects.lein
-  (:require [clojure.java.io :as io]
+  (:require [clojure.data.json :as json]
+            [clojure.java.io :as io]
             [clojure.pprint :as pp]
             [rksm.system-files :as sf]
             [rksm.system-files.jar-util :refer [jar-url->reader jar?]]
@@ -89,16 +90,18 @@
       (lein-dep-hierarchy proj [:plugins])
       (mapcat #(lein-dep-hierarchy proj [:profiles % :plugins]) profiles)))))
 
-(defn- lein-project-deps
-  [proj {:keys [include-plugins? include-dev?] :or [include-plugins? false, include-dev? true] :as options}]
+(defn lein-project-deps
+  [proj {:keys [include-plugins? include-dev? clean?]
+         :or [include-plugins? false, include-dev? true, clean? true]
+         :as options}]
   (let [profiles (or (some-> proj :profiles keys) [])
         profiles (if include-dev? profiles (remove #{:dev} profiles))]
-    (distinct
-     (concat
-      (lein-dep-hierarchy proj [:dependencies])
-      (if include-dev? (lein-dep-hierarchy proj [:dev-dependencies]) [])
-      (mapcat #(lein-dep-hierarchy proj [:profiles % :dependencies]) profiles)
-      (if include-plugins? (lein-project-plugins proj) [])))))
+    (cond-> (lein-dep-hierarchy proj [:dependencies])
+      include-dev?     (concat (lein-dep-hierarchy proj [:dev-dependencies]))
+      include-dev?     (concat (mapcat #(lein-dep-hierarchy proj [:profiles % :dependencies]) profiles))
+      include-plugins? (concat (lein-project-plugins proj))
+      clean?           (->> (filter (comp (partial not= 'org.clojure/clojure) first)))
+      true             distinct)))
 
 (defn lein-deps
   [project-clj-file & [options]]
@@ -137,17 +140,45 @@
 
 (defn modify-project-clj!
   [file update-fn]
-  (let [content (slurp (sf/file))]
-    (binding [*file* file]
-      (spit file (update-fn content)))))
+  (let [file (sf/file file)
+        file (if (.isDirectory file)
+               (sf/file (str file "/project.clj"))
+               file)]
+    (binding [*file* (str file)]
+      (->> file slurp update-fn (spit file)))))
+
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+(defn project-info
+  [project-dir & [opts]]
+  project-dir
+  (if-let [conf (lein-project-conf-content (sf/file project-dir))]
+    (let [nss []
+          #_(->> (sf/discover-ns-in-project-dir project-dir #"\.clj(s|x)?$")
+                (map (fn [ns] {:ns ns, :file (str (sf/file-for-ns ns nil #"\.clj(s|x)?$"))})))
+          deps (lein-project-deps conf opts)]
+      (merge
+       (select-keys conf [:description :group :name :version])
+       {:dir project-dir
+        :namespaces nss
+        :dependencies deps}))))
+
+(defn project-info->json
+  [project-dir & [opts]]
+  (json/write-str (project-info project-dir opts)))
+
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (comment
 
-(lein-deps "/Users/robert/clojure/websocket-test/project.clj" {:include-plugins? true})
+ (project-info "/Users/robert/clojure/websocket-test/")
+
+ (lein-deps "/Users/robert/clojure/websocket-test/project.clj" {:include-plugins? true})
+
  (def proj (lein-project-conf-content (clojure.java.io/file ".")))
- (lein-project-deps proj {:include-plugins? true})
- (lein-project-deps proj {:include-plugins? false :include-dev? false}) 
- 
+ (lein-project-deps proj {:include-plugins? true, :clean? true})
+ (lein-project-deps proj {:include-plugins? false, :include-dev? false, :clean? true})
+
 
  (s/replace "0.1.0-SNAPSHOT" #"([0-9]+\.[0-9]+\.)([0-9]+)(.*)" identity)
  (let [content (slurp (sf/file "/Users/robert/clojure/cloxp-projects/project.clj"))
@@ -165,7 +196,7 @@
     :form))
  (meta (first (drop 2 proj-map)))
  (meta (clojure.tools.reader/read-string (slurp (sf/file "/Users/robert/clojure/cloxp-projects/project.clj"))))
- 
+
  (lein-project-conf-for-ns *ns*)
  (lein-project-conf-for-ns 'rksm.cloxp-repl)
  (lein-project-conf-for-ns 'rksm.system-files)

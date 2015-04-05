@@ -84,10 +84,11 @@
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (defn project-info
-  [project-dir]
+  [project-dir & [opts]]
   (if-let [conf (lein/lein-project-conf-content (sf/file project-dir))]
     (let [nss (->> (sf/discover-ns-in-project-dir project-dir #"\.clj(s|x)?$")
-                (map (fn [ns] (sf/file-for-ns ns))))]
+                (map (fn [ns] (sf/file-for-ns ns))))
+          deps (lein/lein-project-deps conf opts)]
       (merge
        (select-keys conf [:description :group :name :version])
        {:dir project-dir
@@ -115,7 +116,8 @@
  (meta (first (drop 2 proj-map)))
  (meta (clojure.tools.reader/read-string (slurp (sf/file "/Users/robert/clojure/cloxp-projects/project.clj"))))
  
- (lein-project-conf-for-ns *ns*)
- (lein-project-conf-for-ns 'rksm.cloxp-repl)
- (lein-project-conf-for-ns 'rksm.system-files)
+ (lein/lein-project-conf-for-ns *ns*)
+ (sf/classpath-for-ns *ns*)
+ (lein/lein-project-conf-for-ns 'rksm.cloxp-repl)
+ (lein/lein-project-conf-for-ns 'rksm.system-files)
  )

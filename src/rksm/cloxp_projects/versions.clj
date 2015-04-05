@@ -67,7 +67,8 @@
 
 (defn update-project-version-in-file!
   [version-update-fn file]
-  (lein/modify-project-clj! file version-update-fn))
+  (lein/modify-project-clj!
+   file (fn [content] (update-project-version version-update-fn content))))
 
 (defmacro update-project-dep-in-file!
   [new-dep-vec file]
