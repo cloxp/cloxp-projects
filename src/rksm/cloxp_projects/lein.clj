@@ -1,4 +1,3 @@
-(ns rksm.cloxp-projects.lein)
 (ns rksm.cloxp-projects.lein
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
@@ -6,7 +5,8 @@
             [rksm.system-files :as sf]
             [rksm.system-files.jar-util :refer [jar-url->reader jar?]]
             [leiningen.core.project :as project]
-            [leiningen.core.classpath :as classpath]))
+            [leiningen.core.classpath :as classpath]
+            [leiningen.new :as lnew]))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; reading project maps
@@ -165,13 +165,25 @@
 
 (defn project-info->json
   [project-dir & [opts]]
-  (json/write-str (project-info project-dir opts)))
+  (json/write-str (-> (project-info project-dir opts)
+                    (update-in [:dependencies] (partial map (fn [[dep v]] [(str dep) v]))))))
+
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+(defn new-project
+  [name dir]
+  (let [file (io/file dir)
+        name (or name (.getName file))]
+    (if-not (.exists file)
+      (lnew/new nil name "--to-dir" dir))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (comment
 
- (project-info "/Users/robert/clojure/websocket-test/")
+ (project-info->json "/Users/robert/clojure/cloxp-trace/")
+ (-> (project-info "/Users/robert/clojure/cloxp-trace/")
+   (update-in [:dependencies] (partial map (fn [[dep v]] [(str dep) v]))))
 
  (lein-deps "/Users/robert/clojure/websocket-test/project.clj" {:include-plugins? true})
 
