@@ -7,7 +7,7 @@
                  [org.clojure/data.xml "0.0.8"]
                  [org.clojure/data.json "0.2.6"]
                  [com.cemerick/pomegranate "0.3.0"]
-                 [org.rksm/system-files "0.1.3"]
+                 [org.rksm/system-files "0.1.4-SNAPSHOT"]
                  [leiningen/leiningen "2.5.1"]]
   :scm {:url "git@github.com:cloxp/cloxp-projects.git"}
   :pom-addition [:developers [:developer

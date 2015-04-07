@@ -92,7 +92,7 @@
 
 (defn lein-project-deps
   [proj {:keys [include-plugins? include-dev? clean?]
-         :or [include-plugins? false, include-dev? true, clean? true]
+         :or {include-plugins? false, include-dev? true, clean? true}
          :as options}]
   (let [profiles (or (some-> proj :profiles keys) [])
         profiles (if include-dev? profiles (remove #{:dev} profiles))]
