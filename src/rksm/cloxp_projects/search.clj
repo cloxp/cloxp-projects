@@ -11,7 +11,8 @@
         versions (apply sorted-map
                    (mapcat (fn [{:keys [version jar]}]
                              [version {:jar jar
-                                       :namespaces (namespaces-in-jar jar #"clj(x|s)?")}])
+                                       :namespaces (->> (namespaces-in-jar jar #"clj(x|s)?")
+                                                     (map #(select-keys % [:ns :file])))}])
                            infos))]
     (assoc merged :versions versions)))
 
@@ -28,7 +29,7 @@
    (fn [{:keys [versions] :as info}]
      (let [found-versions (keep
                            (fn [[version {nss :namespaces}]]
-                             (if (some #(re-find ns-match (str %)) nss) version))
+                             (if (some #(re-find ns-match (-> % :ns str)) nss) version))
                            versions)
            found-versions (if newest (take-last 1 found-versions) found-versions)]
        (if (empty? found-versions)
