@@ -2,6 +2,7 @@
   (:require [clojure.data.xml :as xml]
             [clojure.zip :as z]
             [clojure.string :as s]
+            [clojure.set :as set]
             [clojure.java.io :as io]
             [rksm.system-files.jar-util :refer [jar-entries-matching
                                                 jar+entry->reader]]))
@@ -23,11 +24,14 @@
 
 (defn pom-project-info-from-xml
   [xml]
-  (->> (:content xml)
-    (filter #(some #{(:tag %)} [:groupId :artifactId :version :name :description]))
-    (mapcat (juxt :tag (comp first :content)))
-    (apply hash-map)
-    (#(clojure.set/rename-keys % {:groupId :group-id :artifactId :artifact-id}))))
+  (let [info (->> (:content xml)
+               (filter #(some #{(:tag %)} [:groupId :artifactId :version :name :description]))
+               (mapcat (juxt :tag (comp first :content)))
+               (apply hash-map))]
+    (-> info
+      (set/rename-keys {:groupId :group-id :artifactId :artifact-id})
+      ; to be compatible with lein project maps:
+      (assoc :name (:artifactId info) :group (:groupId info)))))
 
 (def pom-project-info-from-jar-file
   (memoize

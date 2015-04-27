@@ -116,7 +116,10 @@
 
 (defn project-clj-with-dep
   [project-clj-map group-id artifact-id version]
-  (let [dep [(if group-id (symbol (str group-id) (str artifact-id)) (symbol (str artifact-id))) version]
+  (let [dep [(if group-id
+               (symbol (str group-id) (str artifact-id))
+               (symbol (str artifact-id)))
+             version]
         deps-at (inc (.indexOf project-clj-map :dependencies))]
     (if (zero? deps-at)
       (concat project-clj-map [:dependencies [dep]])
@@ -153,20 +156,19 @@
   [project-dir & [opts]]
   project-dir
   (if-let [conf (lein-project-conf-content (sf/file project-dir))]
-    (let [nss []
-          #_(->> (sf/discover-ns-in-project-dir project-dir #"\.clj(s|x)?$")
-                (map (fn [ns] {:ns ns, :file (str (sf/file-for-ns ns nil #"\.clj(s|x)?$"))})))
+    (let [file-re #"\.(clj(s|x)?)$"
+          nss (->> (sf/discover-ns-in-project-dir project-dir file-re)
+                (map (fn [ns] (let [file (str (sf/file-for-ns ns nil file-re))
+                                    [_ type _] (re-find file-re file)]
+                                {:ns ns
+                                 :type (keyword type)
+                                 :file file}))))
           deps (lein-project-deps conf opts)]
       (merge
        (select-keys conf [:description :group :name :version])
        {:dir project-dir
         :namespaces nss
         :dependencies deps}))))
-
-(defn project-info->json
-  [project-dir & [opts]]
-  (json/write-str (-> (project-info project-dir opts)
-                    (update-in [:dependencies] (partial map (fn [[dep v]] [(str dep) v]))))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
@@ -180,10 +182,6 @@
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (comment
-
- (project-info->json "/Users/robert/clojure/cloxp-trace/")
- (-> (project-info "/Users/robert/clojure/cloxp-trace/")
-   (update-in [:dependencies] (partial map (fn [[dep v]] [(str dep) v]))))
 
  (lein-deps "/Users/robert/clojure/websocket-test/project.clj" {:include-plugins? true})
 

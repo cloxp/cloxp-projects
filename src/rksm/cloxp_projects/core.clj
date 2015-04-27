@@ -4,7 +4,8 @@
             [rksm.cloxp-projects.pom :as pom]
             [rksm.cloxp-projects.lein :as lein]
             [rksm.cloxp-projects.search :as search]
-            [rksm.system-files :as sf]))
+            [rksm.system-files :as sf]
+            [clojure.data.json :as json]))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; search
@@ -40,7 +41,7 @@
                     :repositories (merge cemerick.pomegranate.aether/maven-central
                                          {"clojars" "http://clojars.org/repo"})))
 
-(defn project-deps
+(defn- project-deps
   [& [dir options]]
   (let [dir (or dir (System/getProperty "user.dir"))
         make-file (fn [n] (io/file (str dir java.io.File/separator n)))
@@ -84,16 +85,39 @@
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (defn project-info
+  "Returns a map with :dependencies :namespaces :dir :version :name :group
+  :description"
   [project-dir & [opts]]
-  (if-let [conf (lein/lein-project-conf-content (sf/file project-dir))]
-    (let [nss (->> (sf/discover-ns-in-project-dir project-dir #"\.clj(s|x)?$")
-                (map (fn [ns] (sf/file-for-ns ns))))
-          deps (lein/lein-project-deps conf opts)]
-      (merge
-       (select-keys conf [:description :group :name :version])
-       {:dir project-dir
-        :namespaces nss
-        :dependencies (project-deps project-dir)}))))
+  (if-let [conf-file (find-project-configuration-file project-dir)]
+    (cond
+      (.endsWith conf-file "pom.xml") (let [info (pom/pom-project-info conf-file)
+                                            deps (project-deps project-dir opts)]
+                                        (assoc info :dependencies deps))
+      (.endsWith conf-file "project.clj") (lein/project-info project-dir opts)
+      :default nil)))
+
+(defn project-infos
+  [project-dirs & [opts]]
+  (map #(project-info % opts) project-dirs))
+
+(defn- jsonify
+  [data]
+  json/write
+  (json/write-str
+   data
+;   (update-in data [:dependencies] (partial map (fn [[dep v]] [(str dep) v])))
+   :value-fn (fn [k v]
+               (case k
+                 :dependencies (map (fn [[dep version]] [(str dep) version]) v)
+                 v))))
+
+(defn project-info->json
+  [project-dir & [opts]]
+  (jsonify (project-info project-dir opts)))
+
+(defn project-infos->json
+  [project-dirs & [opts]]
+  (jsonify (project-infos project-dirs opts)))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
