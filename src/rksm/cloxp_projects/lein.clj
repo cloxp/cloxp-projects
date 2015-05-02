@@ -177,6 +177,8 @@
   (let [file (io/file dir)
         name (or name (.getName file))]
     (if-not (.exists file)
+      (.mkdirs file))
+    (if (empty? (.listFiles file))
       (lnew/new nil name "--to-dir" dir))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
