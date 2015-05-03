@@ -1,4 +1,4 @@
-(defproject org.rksm/cloxp-projects "0.1.5"
+(defproject org.rksm/cloxp-projects "0.1.6"
   :description "Dealing with clojure projects and project configurations."
   :license {:name "MIT License"
             :url "http://opensource.org/licenses/MIT"}
