@@ -2,6 +2,7 @@
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
+            [clojure.set :as set]
             [rksm.system-files :as sf]
             [rksm.system-files.jar-util :refer [jar-url->reader jar?]]
             [leiningen.core.project :as project]
@@ -153,22 +154,28 @@
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
 (defn project-info
-  [project-dir & [opts]]
-  project-dir
+  "Read and parse the project.clj file, attach additional information about the
+  project. Currently this is namespace information, consisting of a {:ns :type
+  :file} seq and dependency information.
+  If custom fields from project.clj are required use option :additional-keys."
+  [project-dir & [{:keys [only additional-keys] :as opts}]]
   (if-let [conf (lein-project-conf-content (sf/file project-dir))]
-    (let [file-re #"\.(clj(s|x)?)$"
-          nss (->> (sf/discover-ns-in-project-dir project-dir file-re)
-                (map (fn [ns] (let [file (str (sf/file-for-ns ns nil file-re))
-                                    [_ type _] (re-find file-re file)]
-                                {:ns ns
-                                 :type (keyword type)
-                                 :file file}))))
-          deps (lein-project-deps conf opts)]
-      (merge
-       (select-keys conf [:description :group :name :version])
-       {:dir project-dir
-        :namespaces nss
-        :dependencies deps}))))
+    (let [default-keys [:description :group :name :version :dependencies :namespaces :dir]
+          keys (into (or only default-keys) additional-keys)
+          file-re #"\.(clj(s|x)?)$"
+          nss (if (some #{:namespaces} keys)
+                (->> (sf/discover-ns-in-project-dir project-dir file-re)
+                  (map (fn [ns] (let [file (str (sf/file-for-ns ns nil file-re))
+                                      [_ type _] (re-find file-re file)]
+                                  {:ns ns
+                                   :type (keyword type)
+                                   :file file})))))
+          deps (if (some #{:dependencies} keys) (lein-project-deps conf opts))]
+      (select-keys
+       (merge conf {:dir project-dir
+                    :namespaces nss
+                    :dependencies deps})
+       keys))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 

@@ -2,7 +2,11 @@
   (:require [rksm.cloxp-projects.core :refer :all :exclude (pom)]
             [rksm.cloxp-projects.pom :as pom]
             [rksm.cloxp-projects.lein :as lein]
+            [clojure.java.io :as io]
+            [rksm.test-helpers.fs :as helper-fs]
             [clojure.test :refer :all]))
+
+(def test-dir (-> "./test-dir" io/file .getCanonicalPath))
 
 (def pom
 "<project xmlns=\"http://maven.apache.org/POM/4.0.0\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"
@@ -94,7 +98,19 @@ ns-unmap
          ((juxt :name :group :source-paths)
           (lein/lein-project-conf-for-ns 'rksm.cloxp-projects.test)))))
 
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+(deftest project-info-test
+  (helper-fs/with-files test-dir {"project.clj" "(defproject foo/bar \"0.1.0-SNAPSHOT\"\n  :description \"baz\"\n  :dependencies [[org.clojure/clojure \"1.6.0\"]] :test 123)"}
+    (is (= ["foo" "bar" (str test-dir)]
+           ((juxt :group :name :dir) (project-info test-dir))))
+    (is (= {:name "bar"}
+           (project-info test-dir {:only [:name]})))
+    (is (= {:test 123}
+           (project-info test-dir {:only [:test]})))))
+
 (comment
  (run-tests *ns*)
+ (let [s (java.io.StringWriter.)] (binding [*test-out* s] (test-ns *ns*) (print (str s))))
  (->> (ns-interns *ns*) keys (map (partial ns-unmap *ns*)) doall)
  (remove-ns 'rksm.system-navigator.dependencies-test))
