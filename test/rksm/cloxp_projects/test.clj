@@ -109,6 +109,10 @@ ns-unmap
     (is (= {:test 123}
            (project-info test-dir {:only [:test]})))))
 
+(deftest project-info-test
+  (helper-fs/with-files test-dir {"project.clj" "(defproject foo/bar \"0.1.0-SNAPSHOT\"\n  :description \"baz\"\n  :dependencies [[org.clojure/clojure \"1.6.0\"]] :test 123)"}
+    (source-dirs-in-project-conf test-dir)))
+
 (comment
  (run-tests *ns*)
  (let [s (java.io.StringWriter.)] (binding [*test-out* s] (test-ns *ns*) (print (str s))))

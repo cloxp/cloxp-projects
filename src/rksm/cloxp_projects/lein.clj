@@ -60,18 +60,6 @@
    (sf/classpath-for-ns ns)))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-
-(defn source-dirs-of-lein
-  [project-clj-file]
-  (let [proj (read-string (slurp project-clj-file))
-        source (some->> proj
-                 (drop-while (partial not= :source-paths))
-                 second)
-        test-source (some-> (drop-while (partial not= :test-paths) proj)
-                      second)]
-    (into [] (apply merge source test-source))))
-
-; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; dependencies
 
 (defn- lein-dep-hierarchy
@@ -153,6 +141,15 @@
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+(defn- extract-source-dirs
+  [dir pclj-map]
+  (->>
+    pclj-map
+    ((juxt :source-paths :test-paths #(some->> % :cljsbuild :builds vals (mapcat :source-paths))))
+    flatten (remove nil?)
+    (map #(io/file (str dir "/" %)))
+    (map #(.getAbsolutePath %))))
+
 (defn project-info
   "Read and parse the project.clj file, attach additional information about the
   project. Currently this is namespace information, consisting of a {:ns :type
@@ -161,10 +158,13 @@
   [project-dir & [{:keys [only additional-keys] :as opts}]]
   (if-let [conf (lein-project-conf-content (sf/file project-dir))]
     (let [default-keys [:description :group :name :version :dependencies :namespaces :dir]
+          source-dirs (extract-source-dirs project-dir conf)
           keys (into (or only default-keys) additional-keys)
           file-re #"\.(clj(s|x)?)$"
           nss (if (some #{:namespaces} keys)
-                (->> (sf/discover-ns-in-project-dir project-dir file-re)
+                (->> source-dirs
+                  (mapcat #(sf/discover-ns-in-cp-dir % file-re))
+                  distinct
                   (map (fn [ns] (let [file (str (sf/file-for-ns ns nil file-re))
                                       [_ type _] (re-find file-re file)]
                                   {:ns ns
@@ -176,6 +176,14 @@
                     :namespaces nss
                     :dependencies deps})
        keys))))
+
+; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+
+(defn source-dirs-of-lein
+  [project-clj-file]
+  (let [dir (.getParentFile (io/file project-clj-file))]
+    (extract-source-dirs
+     dir (project-info dir {:only [:source-paths :test-paths :cljsbuild]}))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 

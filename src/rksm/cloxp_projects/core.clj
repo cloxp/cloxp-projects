@@ -20,11 +20,10 @@
   [project-dir]
   (let [pclj (io/file (str project-dir "/project.clj"))
         pom (io/file (str project-dir "/pom.xml"))]
-    (map (partial str project-dir "/")
-         (cond
-           (.exists pclj) (lein/source-dirs-of-lein pclj)
-           (.exists pom) (pom/source-dirs-of-pom pom)
-           :default []))))
+    (cond
+      (.exists pclj) (lein/source-dirs-of-lein pclj)
+      (.exists pom) (map (partial str project-dir "/") (pom/source-dirs-of-pom pom))
+      :default [])))
 
 (comment
  (source-dirs-in-project-conf "/Users/robert/clojure/cloxp-cljs")
