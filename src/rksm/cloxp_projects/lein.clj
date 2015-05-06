@@ -148,7 +148,8 @@
     ((juxt :source-paths :test-paths #(some->> % :cljsbuild :builds vals (mapcat :source-paths))))
     flatten (remove nil?)
     (map #(io/file (str dir "/" %)))
-    (map #(.getAbsolutePath %))))
+    (map #(.getCanonicalPath %))
+    distinct))
 
 (defn project-info
   "Read and parse the project.clj file, attach additional information about the
