@@ -12,6 +12,26 @@
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; reading project maps
 
+(defn- read-project-clj-from-jar
+  [^java.io.File jar-file]
+  (if-let [rdr (jar-url->reader
+                 (str "jar:" (.toURI jar-file) "!/project.clj"))]
+    (slurp rdr)))
+
+(defn- search-for-project-clj-dir-upward
+  [dir]
+  (if dir
+    (let [project-clj (io/file dir "project.clj")]
+      (if (.exists project-clj)
+        dir
+        (search-for-project-clj-dir-upward
+         (.getParentFile dir))))))
+
+(defn- search-for-project-clj-upward
+  [dir]
+  (some-> dir
+    search-for-project-clj-dir-upward
+    (io/file "project.clj")))
 
 (defmulti lein-project-conf-content
   (fn [x] (cond
@@ -39,25 +59,31 @@
 (defmethod lein-project-conf-content :jar
   [^java.io.File jar-file]
   (binding [*file* (str jar-file)] ; for leiningen's defproject
-    (if-let [rdr (jar-url->reader
-                   (str "jar:" (.toURI jar-file) "!/project.clj"))]
-      (lein-project-conf-content (slurp rdr)))))
+    (lein-project-conf-content
+       (read-project-clj-from-jar jar-file))))
 
 (defmethod lein-project-conf-content :dir
   [dir]
-  (if-not dir
-    nil
-    (binding [*file* (str dir "/project.clj")] ; for leiningen
-      (let [project-clj (io/file *file*)]
-        (lein-project-conf-content
-         (if (.exists project-clj)
-           (slurp project-clj)
-           (.getParentFile dir)))))))
+  (if-let [pclj (some-> dir search-for-project-clj-upward)]
+    (binding [*file* (str pclj)] ; for leiningen
+      (-> pclj
+        slurp
+        lein-project-conf-content))))
 
 (defn lein-project-conf-for-ns
   [ns]
   (lein-project-conf-content
    (sf/classpath-for-ns ns)))
+
+(defn lein-project-conf-string-for-ns
+  [ns]
+  (let [cp (sf/classpath-for-ns ns)]
+    (cond
+      (nil? cp) nil
+      (jar? cp) (read-project-clj-from-jar cp)
+      (.isDirectory cp) (some-> (some-> cp
+                                  search-for-project-clj-upward
+                                  slurp)))))
 
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; dependencies
