@@ -59,6 +59,24 @@
     (doall (map install deps))
     deps))
 
+(defn- depends-on?
+  "does proj depend on other-proj?"
+  [{:keys [dependencies] :as proj} {:keys [group name] :as other-proj}]
+  (let [pid (symbol group name)]
+    (some (fn [[id version]] (= id pid)) dependencies)))
+
+(defn sort-by-deps
+  "order projects so that for projects a and b, a is sorted before b iff (not
+  (depends-on? a b))"
+  [projects]
+  (loop [projects (set projects) sorted []]
+    (if (empty? projects)
+      sorted
+      (let [dep-less (filter (fn [a] (not-any? (fn [b] (depends-on? a b)) projects)) projects)]
+        (when (and (empty? dep-less) (not-empty projects))
+          (throw (Exception. (str "circular dependency in " projects))))
+        (recur (clojure.set/difference projects dep-less) (concat sorted dep-less))))))
+
 ; -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 ; modifying poms and project.cljss
 
