@@ -187,7 +187,7 @@
     (let [default-keys [:description :group :name :version :dependencies :namespaces :dir]
           source-dirs (extract-source-dirs project-dir conf)
           keys (into (or only default-keys) additional-keys)
-          file-re #"\.(clj(s|x)?)$"
+          file-re #"\.(clj(s|x|c)?)$"
           nss (if (some #{:namespaces} keys)
                 (->> source-dirs
                   (mapcat #(sf/discover-ns-in-cp-dir % file-re))
