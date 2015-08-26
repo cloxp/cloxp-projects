@@ -189,14 +189,15 @@
           keys (into (or only default-keys) additional-keys)
           file-re #"\.(clj(s|x|c)?)$"
           nss (if (some #{:namespaces} keys)
-                (->> source-dirs
-                  (mapcat #(sf/discover-ns-in-cp-dir % file-re))
-                  distinct
-                  (map (fn [ns] (let [file (str (sf/file-for-ns ns nil file-re))
-                                      [_ type _] (re-find file-re file)]
-                                  {:ns ns
-                                   :type (keyword type)
-                                   :file file})))))
+                (into []
+                      (comp (mapcat #(sf/namespaces-in-dir-with-file % file-re))
+                            (map (fn [{:keys [name file]}]
+                                   (let [file (str file)
+                                         [_ type _] (re-find file-re file)]
+                                     {:ns name
+                                      :type (keyword type)
+                                      :file file}))))
+                      source-dirs))
           deps (if (some #{:dependencies} keys) (lein-project-deps conf opts))]
       (select-keys
        (merge conf {:dir project-dir
