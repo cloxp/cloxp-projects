@@ -169,9 +169,14 @@
 
 (defn- extract-source-dirs
   [dir pclj-map]
-  (->>
-    pclj-map
-    ((juxt :source-paths :test-paths #(some->> % :cljsbuild :builds vals (mapcat :source-paths))))
+  (->> pclj-map
+    (juxt :source-paths
+          :test-paths
+          (fn [pmap] (some->> pmap
+                       :cljsbuild
+                       :builds
+                       (#(cond (coll? %) % (map? %) (vals %) :default nil))
+                       (mapcat :source-paths))))
     flatten (remove nil?)
     (map #(io/file (str dir "/" %)))
     (map #(.getCanonicalPath %))
